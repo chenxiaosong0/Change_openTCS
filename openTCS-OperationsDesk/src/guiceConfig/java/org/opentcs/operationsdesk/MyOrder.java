@@ -20,6 +20,9 @@ import org.opentcs.components.kernel.services.*;
 import org.opentcs.components.plantoverview.PluggablePanel;
 import org.opentcs.customizations.ApplicationEventBus;
 import org.opentcs.data.model.Location;
+import org.opentcs.data.model.Path;
+import org.opentcs.data.model.Point;
+import org.opentcs.data.model.TCSResourceReference;
 import org.opentcs.data.order.DriveOrder;
 import org.opentcs.data.order.TransportOrder;
 //import org.opentcs.guing.base.components.properties.type.Relation;
@@ -56,12 +59,12 @@ public class MyOrder  extends PluggablePanel {
   private final DispatcherService dispatcherService;
   private  EventSource eventSource;
   private final KernelServicePortal kernelServicePortal;
-
+  private Map<String,Long> emptyLocation = new TreeMap<>(new MyComparator()),fullLocation = new TreeMap<>(new MyComparator());
 
   public static void main(String[] args) {
     Injector injector = Guice.createInjector(new MyOrderModule());
     MyOrder myOrder = injector.getInstance(MyOrder.class);
-    myOrder.initComponents();
+    myOrder.getMeaasge();
 
   }
 
@@ -118,41 +121,105 @@ public class MyOrder  extends PluggablePanel {
   /**
    * 添加单个订单
    */
-  public void addOrder()
+  public void getMeaasge()
   {
 //    DispatcherService dispatcherService = kernelServicePortal.getDispatcherService();
+    PlantModelService plantModelService = kernelServicePortal.getPlantModelService();
+    Set<Path> paths = plantModelService.fetchObjects(Path.class);
 
     System.out.println("获取运输订单服务---------");
     TransportOrderService transportOrderService = kernelServicePortal.getTransportOrderService();
-//    locations = new ArrayList<>(transportOrderService.fetchObjects(Location.class));
+    locations = new ArrayList<>(transportOrderService.fetchObjects(Location.class));
+//    int maxNum = 0;
+//    Map<Integer,Location> map = new HashMap();
 //    for (Location location : locations) {//获取地图的Location
-//      System.out.println(location.getName());
+//      if(location.getProperties().containsKey("isFull")){
+//        if(location.getProperty("isFull").contentEquals("true")){
+//          Integer num = Integer.parseInt(location.getName().substring(9,13));
+//          map.put(num,location);
+//          maxNum = Math.max(num,maxNum);
+//
+//        }
+//      }
 //    }
+    int i = 0;
+    for (Location location : locations) {//获取地图的Location
+      if(location.getProperties().containsKey("isFull")){
+        i++;
+        if(location.getProperty("isFull").contentEquals("true")){//true
+          fullLocation.put(location.getName(),System.currentTimeMillis() +(int)(Math.random()*10));
+        }else{//false
+          emptyLocation.put(location.getName(),System.currentTimeMillis() + i);
+        }
+      }
+    }
 
-    List<DestinationCreationTO> destinations = new LinkedList<>();
-    System.out.println("将目的地添加到列表中---------");
-    destinations.add(new DestinationCreationTO("Location-0001",
-                                               "Type2Load"));
-    destinations.add(new DestinationCreationTO("robotLocation",
-                                               "unLoad"));
+    List<String> fullList = new ArrayList<>();
+    //Stack<String> stack = new Stack<>();
+    Set<String> keySet = fullLocation.keySet();
+    Iterator<String> iterator = keySet.iterator();
+    long current = System.currentTimeMillis();
+    String small = "Location-0000";
+
+    //1：把map转换成entryset，再转换成保存Entry对象的list。
+    List<Map.Entry<String,Long>> entrys=new ArrayList<>(fullLocation.entrySet());
+    Collections.sort(entrys, new Comparator<Map.Entry<String, Long>>() {
+      @Override
+      public int compare(Map.Entry<String, Long> o1, Map.Entry<String, Long> o2) {
+        return o1.getValue().compareTo(o2.getValue());//返回负数则o1在前，正数则o2在前
+      }
+    });
+    while (iterator.hasNext()){
+      String next = iterator.next();
+      System.out.println(next + ": " + fullLocation.get(next));
+      //stack.push(next);
+    }
+    System.out.println("------------------");
+    for (Map.Entry<String, Long> entry : entrys) {
+      System.out.println(entry.getKey()+", "+entry.getValue());
+    }
+
+    //System.out.println(stack);
+
+
+
+
+
+
+
+//      for(Path path:paths){
+//        if(path.getSourcePoint().equals(linkPoint)){
+//          System.out.println("source: " + path.getName());
+//        } else if (path.getDestinationPoint().equals(linkPoint)) {
+//          System.out.println("destination: " + path.getName());
+//        }
+//      }
+
+
+//    List<DestinationCreationTO> destinations = new LinkedList<>();
+//    System.out.println("将目的地添加到列表中---------");
+//    destinations.add(new DestinationCreationTO("Location-0001",
+//                                               "Type2Load"));
+//    destinations.add(new DestinationCreationTO("robotLocation",
+//                                               "unLoad"));
 
 
 //    String orderName = "OSystem-" + UUID.randomUUID();
-    TransportOrderCreationTO transportOrderCreationTO = new TransportOrderCreationTO("testCreatTransportOrder", destinations);
-    transportOrderCreationTO = transportOrderCreationTO.withIncompleteName(true);
-    OrderSequenceCreationTO sequenceTO = new OrderSequenceCreationTO("MyOrderSequence");
-    System.out.println("获取小车服务对象*******");
+//    TransportOrderCreationTO transportOrderCreationTO = new TransportOrderCreationTO("testCreatTransportOrder", destinations);
+//    transportOrderCreationTO = transportOrderCreationTO.withIncompleteName(true);
+//    OrderSequenceCreationTO sequenceTO = new OrderSequenceCreationTO("MyOrderSequence");
+//    System.out.println("获取小车服务对象*******");
 //    VehicleService vehicleService = kernelServicePortal.getVehicleService();
-    String vehicleName = "Vehicle-0001";
+//    String vehicleName = "Vehicle-0001";
 //    Vehicle vehicle = vehicleService.fetchObject(Vehicle.class, vehicleName);
 
 //    transportOrderCreationTO = transportOrderCreationTO.withIntendedVehicleName(vehicleName);
-    transportOrderCreationTO = transportOrderCreationTO.withDeadline(Instant.now().plus(5, ChronoUnit.SECONDS));
+//    transportOrderCreationTO = transportOrderCreationTO.withDeadline(Instant.now().plus(5, ChronoUnit.SECONDS));
 
-    transportOrderService.createTransportOrder(transportOrderCreationTO);
+//    transportOrderService.createTransportOrder(transportOrderCreationTO);
 //    OrderSequence orderSequence = transportOrderService.createOrderSequence(sequenceTO);
-    dispatcherService.dispatch();
-    kernelServicePortal.logout();
+//    dispatcherService.dispatch();
+//    kernelServicePortal.logout();
   }
 
   /**
@@ -254,4 +321,10 @@ public class MyOrder  extends PluggablePanel {
   private javax.swing.JPanel orderGenPanel;
   private javax.swing.JFrame frame;
 
+}
+class MyComparator implements Comparator<String>{
+  @Override
+  public int compare(String o1, String o2) {
+    return o2.compareTo(o1);//大 -> 小
+  }
 }

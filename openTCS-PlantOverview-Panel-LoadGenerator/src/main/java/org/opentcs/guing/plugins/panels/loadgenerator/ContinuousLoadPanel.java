@@ -28,10 +28,8 @@ import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.table.AbstractTableModel;
-import org.opentcs.access.CredentialsException;
-import org.opentcs.access.Kernel;
-import org.opentcs.access.SharedKernelServicePortal;
-import org.opentcs.access.SharedKernelServicePortalProvider;
+
+import org.opentcs.access.*;
 import org.opentcs.components.kernel.services.ServiceUnavailableException;
 import org.opentcs.components.kernel.services.TCSObjectService;
 import org.opentcs.components.plantoverview.PluggablePanel;
@@ -43,12 +41,10 @@ import org.opentcs.data.model.Vehicle;
 import static org.opentcs.guing.plugins.panels.loadgenerator.I18nPlantOverviewPanelLoadGenerator.BUNDLE_PATH;
 import org.opentcs.guing.plugins.panels.loadgenerator.PropertyTableModel.PropEntry;
 import org.opentcs.guing.plugins.panels.loadgenerator.batchcreator.ExplicitOrderBatchGenerator;
+import org.opentcs.guing.plugins.panels.loadgenerator.batchcreator.MyOrderBatchGenerator;
 import org.opentcs.guing.plugins.panels.loadgenerator.batchcreator.OrderBatchCreator;
 import org.opentcs.guing.plugins.panels.loadgenerator.batchcreator.RandomOrderBatchCreator;
-import org.opentcs.guing.plugins.panels.loadgenerator.trigger.OrderGenerationTrigger;
-import org.opentcs.guing.plugins.panels.loadgenerator.trigger.SingleOrderGenTrigger;
-import org.opentcs.guing.plugins.panels.loadgenerator.trigger.ThresholdOrderGenTrigger;
-import org.opentcs.guing.plugins.panels.loadgenerator.trigger.TimeoutOrderGenTrigger;
+import org.opentcs.guing.plugins.panels.loadgenerator.trigger.*;
 import org.opentcs.guing.plugins.panels.loadgenerator.xmlbinding.DriveOrderEntry;
 import org.opentcs.guing.plugins.panels.loadgenerator.xmlbinding.TransportOrderEntry;
 import org.opentcs.guing.plugins.panels.loadgenerator.xmlbinding.TransportOrdersDocument;
@@ -133,7 +129,6 @@ public class ContinuousLoadPanel
     if (isInitialized()) {
       return;
     }
-    System.out.println("Get a kernel reference!");
     // Get a kernel reference.
     try {
       sharedPortal = portalProvider.register();
@@ -248,6 +243,27 @@ public class ContinuousLoadPanel
     addPropertyButton.setEnabled(transportOrderSelected);
     deleteFromDOTableButton.setEnabled(driveOrderSelected);
     removePropertyButton.setEnabled(propertySelected);
+  }
+
+
+  private OrderGenerationTrigger MycreateOrderGenTrigger(int threshold) {
+    OrderBatchCreator batchCreator = MycreateOrderBatchCreator();//创建批次订单
+    if (batchCreator == null) {
+      LOG.warn("map is empty ! can not create batchCreator!");
+      return null;
+    }
+    LOG.info("新的订单生成触发器（降低到阈值: {} 后触发）",threshold);
+    //返回生成触发器
+    return new MyThresholdOrderGenTrigger(eventSource,
+        objectService,
+        threshold,
+        batchCreator);
+  }
+  private OrderBatchCreator MycreateOrderBatchCreator() {
+    MyOrderBatchGenerator batchGenerator = new MyOrderBatchGenerator(sharedPortal.getPortal().getTransportOrderService(),
+        sharedPortal.getPortal().getDispatcherService());
+    if(batchGenerator.createOrderBatch() == null) return null;
+    return batchGenerator;
   }
 
   /**
@@ -896,11 +912,11 @@ public class ContinuousLoadPanel
   private void orderGenChkBoxItemStateChanged(java.awt.event.ItemEvent evt) {//GEN-FIRST:event_orderGenChkBoxItemStateChanged
     if (evt.getStateChange() == ItemEvent.SELECTED) {
       if (sharedPortal.getPortal().getState().equals(Kernel.State.OPERATING)) {
-        orderGenTrigger = createOrderGenTrigger();//订单生成触发器
+        orderGenTrigger = createOrderGenTrigger();
         if (orderGenTrigger == null) {
           return;
         }
-        orderGenTrigger.setTriggeringEnabled(true);//启用生成订单
+        orderGenTrigger.setTriggeringEnabled(true);
       }
     }
     else if (orderGenTrigger != null) {
@@ -912,21 +928,28 @@ public class ContinuousLoadPanel
   }//GEN-LAST:event_orderGenChkBoxItemStateChanged
 
   private void MyOrderGenChkBoxItemStateChanged(java.awt.event.ItemEvent evt) {//GEN-FIRST:event_orderGenChkBoxItemStateChanged
-    if (evt.getStateChange() == ItemEvent.SELECTED) {
-      if (sharedPortal.getPortal().getState().equals(Kernel.State.OPERATING)) {
-        orderGenTrigger = createOrderGenTrigger();//订单生成触发器
-        if (orderGenTrigger == null) {
-          return;
+    try {
+      if (evt.getStateChange() == ItemEvent.SELECTED) {
+        if (sharedPortal.getPortal().getState().equals(Kernel.State.OPERATING)) {
+          orderGenTrigger = MycreateOrderGenTrigger(1);//订单生成触发器
+//          if (orderGenTrigger == null) {
+//            LOG.warn("MycreateOrderGenTrigger() is null; excute terminate()!");
+//            return;
+//          }
+          orderGenTrigger.setTriggeringEnabled(true);//启用生成订单
         }
-        orderGenTrigger.setTriggeringEnabled(true);//启用生成订单
       }
-    }
-    else if (orderGenTrigger != null) {
-      orderGenTrigger.setTriggeringEnabled(false);
-      orderGenTrigger = null;
-    }
+      else if (orderGenTrigger != null) {
+        orderGenTrigger.setTriggeringEnabled(false);
+        orderGenTrigger = null;
+      }
 
-    updateElementStates();
+      updateElementStates();
+    } catch (KernelRuntimeException e) {
+      LOG.warn("MycreateOrderGenTrigger() is null; excute terminate()!");
+      terminate();
+      throw new RuntimeException(e);
+    }
   }//GEN-LAST:event_orderGenChkBoxItemStateChanged
 
   private void addToTOTableButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_addToTOTableButtonActionPerformed

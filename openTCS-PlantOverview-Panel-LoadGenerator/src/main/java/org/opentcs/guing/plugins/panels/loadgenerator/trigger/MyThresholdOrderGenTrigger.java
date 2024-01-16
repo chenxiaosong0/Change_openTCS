@@ -7,10 +7,6 @@
  */
 package org.opentcs.guing.plugins.panels.loadgenerator.trigger;
 
-import java.util.HashSet;
-import java.util.LinkedHashSet;
-import static java.util.Objects.requireNonNull;
-import java.util.Set;
 import org.opentcs.access.KernelRuntimeException;
 import org.opentcs.components.kernel.services.TCSObjectService;
 import org.opentcs.customizations.ApplicationEventBus;
@@ -22,19 +18,25 @@ import org.opentcs.util.event.EventSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.Set;
+
+import static java.util.Objects.requireNonNull;
+
 /**
  * Triggers creation of a batch of orders if the number of transport orders
  * in progress drop to or below a given threshold.
  * 如果正在处理的传输订单数量降至或低于给定阈值，则触发一批订单的创建。
  */
-public class ThresholdOrderGenTrigger
+public class MyThresholdOrderGenTrigger
     implements EventHandler,
                OrderGenerationTrigger {
 
   /**
    * This class's Logger.
    */
-  private static final Logger LOG = LoggerFactory.getLogger(ThresholdOrderGenTrigger.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MyThresholdOrderGenTrigger.class);
   /**
    * Where we get events from.从那里获取事件。
    */
@@ -58,6 +60,7 @@ public class ThresholdOrderGenTrigger
    */
   private final OrderBatchCreator orderBatchCreator;
 
+
   /**
    * Creates a new instance.
    *
@@ -66,49 +69,60 @@ public class ThresholdOrderGenTrigger
    * @param threshold The threshold when new order are being created
    * @param orderBatchCreator The order batch creator
    */
-  public ThresholdOrderGenTrigger(final @ApplicationEventBus EventSource eventSource,
-                                  final TCSObjectService objectService,
-                                  final int threshold,
-                                  final OrderBatchCreator orderBatchCreator) {
+  public MyThresholdOrderGenTrigger(final @ApplicationEventBus EventSource eventSource,
+                                    final TCSObjectService objectService,
+                                    final int threshold,
+                                    final OrderBatchCreator orderBatchCreator) {
     this.eventSource = requireNonNull(eventSource, "eventSource");
     this.objectService = requireNonNull(objectService, "objectService");
     this.threshold = threshold;
     this.orderBatchCreator = requireNonNull(orderBatchCreator, "orderBatchCreator");
-
   }
 
   @Override
   public void setTriggeringEnabled(boolean enabled) {
-    synchronized (knownOrders) {
-      if (enabled) {
-        // Remember all orders that are not finished, failed etc.
-        //记住所有未完成的订单，失败的订单等。
-        for (TransportOrder curOrder : objectService.fetchObjects(TransportOrder.class)) {
-          if (!curOrder.getState().isFinalState()) {
-            knownOrders.add(curOrder);
+    try {
+      synchronized (knownOrders) {
+        if (enabled) {
+          // Remember all orders that are not finished, failed etc.
+          //记住所有未完成的订单，失败的订单等。
+          for (TransportOrder curOrder : objectService.fetchObjects(TransportOrder.class)) {
+            if (!curOrder.getState().isFinalState()) {
+              knownOrders.add(curOrder);
+            }
+          }
+          eventSource.subscribe(this);
+          if (knownOrders.size() <= threshold) {
+            triggerOrderGeneration();
           }
         }
-        eventSource.subscribe(this);
-        if (knownOrders.size() <= threshold) {
-          triggerOrderGeneration();
+        else {
+          eventSource.unsubscribe(this);
+          knownOrders.clear();
         }
       }
-      else {
-        eventSource.unsubscribe(this);
-        knownOrders.clear();
-      }
+    }catch (NullPointerException e){
+      LOG.warn("setTriggeringEnabled() catch null pointer ");
+      throw new NullPointerException("OsetTriggeringEnabled() failed due to null pointer");
     }
+
   }
 
   @Override
   public void triggerOrderGeneration()
       throws KernelRuntimeException {
-    Set<TransportOrder> orderBatch = orderBatchCreator.createOrderBatch();
-    if(orderBatch == null){
+    try {
+      Set<TransportOrder> orderBatch = orderBatchCreator.createOrderBatch();
+//      if(orderBatch == null){
+//        LOG.warn(" ******* triggerOrderGeneration() return ");
+//        return;
+//      }
+      knownOrders.addAll(orderBatch);
+    }catch (NullPointerException e){
       LOG.warn(" ******* triggerOrderGeneration() return ");
-      return;
+      throw new NullPointerException("Order generation failed due to null pointer");
     }
-    knownOrders.addAll(orderBatch);
+
   }
 
   @Override
@@ -135,6 +149,8 @@ public class ThresholdOrderGenTrigger
       // If an order was modified, check if it's NOT "in progress". If it's not,
       // i.e. if it's now finished, failed etc., remove it here, too.
       else if (eventOrder.getState().isFinalState()) {
+//        System.out.println(eventOrder.getName() +" : " +
+//            eventOrder.getCurrentDriveOrder().getDestination().getProperties());
         knownOrders.remove(eventOrder);
       }
       // Now let's check if the number of orders "in progress" has dropped below
